@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>小说任务关系力导图 - 叶嘉新</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #0f172a;
+      --panel: #111827;
+      --border: #1f2937;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --accent: #38bdf8;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: radial-gradient(circle at 20% 20%, rgba(56,189,248,0.08), transparent 25%),
+                  radial-gradient(circle at 80% 0%, rgba(94,234,212,0.06), transparent 30%),
+                  var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      padding: 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      backdrop-filter: blur(6px);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: linear-gradient(180deg, rgba(15,23,42,0.92) 0%, rgba(15,23,42,0.75) 100%);
+    }
+
+    header h1 {
+      margin: 0;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      font-size: 20px;
+    }
+
+    header .author {
+      padding: 6px 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: 320px 1fr 320px;
+      gap: 12px;
+      padding: 12px;
+      flex: 1;
+      min-height: 0;
+    }
+
+    @media (max-width: 1200px) {
+      main { grid-template-columns: 320px 1fr; }
+      aside.right { display: none; }
+    }
+
+    @media (max-width: 920px) {
+      main { grid-template-columns: 1fr; }
+      aside.left { order: 2; }
+      section.canvas { order: 1; height: 65vh; }
+    }
+
+    aside, section.canvas {
+      background: linear-gradient(145deg, rgba(17,24,39,0.85), rgba(17,24,39,0.7));
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 14px;
+      min-height: 0;
+      box-shadow: 0 24px 60px rgba(0,0,0,0.35);
+    }
+
+    h2 {
+      margin: 6px 0 12px;
+      font-size: 15px;
+      color: #cbd5e1;
+      letter-spacing: 0.5px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(56,189,248,0.12);
+      color: #cffafe;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      margin-right: 8px;
+    }
+
+    label { display: block; margin-bottom: 6px; color: var(--muted); font-size: 14px; }
+    input[type="checkbox"], input[type="radio"] { margin-right: 6px; accent-color: var(--accent); }
+
+    .control-group {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+
+    .search-bar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .search-bar input {
+      flex: 1;
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.04);
+      color: var(--text);
+    }
+
+    button {
+      background: linear-gradient(135deg, #38bdf8, #818cf8);
+      color: #0b1224;
+      border: none;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.15s ease, box-shadow 0.2s ease;
+    }
+
+    button:hover { transform: translateY(-1px); box-shadow: 0 8px 22px rgba(129,140,248,0.35); }
+
+    #graph { width: 100%; height: 100%; }
+
+    .legend { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+    .legend .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+
+    .badge {
+      padding: 4px 8px;
+      background: rgba(255,255,255,0.06);
+      border-radius: 8px;
+      font-size: 12px;
+      color: var(--muted);
+      margin-right: 6px;
+    }
+
+    .timeline {
+      max-height: 45vh;
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .timeline-item {
+      border-left: 2px solid var(--border);
+      padding-left: 12px;
+      margin-bottom: 12px;
+      position: relative;
+    }
+
+    .timeline-item::before {
+      content: '';
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--accent);
+      left: -6px;
+      top: 8px;
+    }
+
+    .timeline-item h4 { margin: 0 0 6px; color: #e0f2fe; }
+    .timeline-item p { margin: 0; color: var(--muted); line-height: 1.4; }
+
+    .card {
+      border: 1px solid var(--border);
+      padding: 12px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.02);
+      margin-bottom: 8px;
+    }
+
+    .flex { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+    .hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
+
+    .chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 999px; background: rgba(129,140,248,0.14); color: #e0e7ff; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="pill">作者：叶嘉新</div>
+    <h1>小说任务关系力导图 & 时间线</h1>
+    <div class="author">可视化: 支线筛选 / 角色定位 / 情节时间线</div>
+  </header>
+
+  <main>
+    <aside class="left">
+      <h2>筛选与定位</h2>
+      <div class="control-group">
+        <div class="search-bar">
+          <input id="search" type="search" placeholder="搜索角色或情节..." aria-label="搜索" />
+          <button id="resetBtn">重置</button>
+        </div>
+        <div class="flex">
+          <label><input type="checkbox" id="pinToggle"> 固定当前筛选</label>
+          <label><input type="checkbox" id="labelsToggle" checked> 显示标签</label>
+        </div>
+        <p class="hint">拖拽节点可手动排布，点击可查看详情。</p>
+      </div>
+
+      <div class="control-group" id="branchFilters">
+        <div class="flex" style="justify-content: space-between; align-items:center;">
+          <h2 style="margin:0;">支线选择</h2>
+          <button id="selectAll">全选</button>
+        </div>
+      </div>
+
+      <div class="control-group" id="typeFilters">
+        <h2>角色 / 情节类别</h2>
+      </div>
+
+      <div class="control-group">
+        <h2>时间范围</h2>
+        <input type="range" id="yearRange" min="1" max="5" value="5" step="1" />
+        <div class="flex">
+          <span class="badge">起点：第1幕</span>
+          <span class="badge">当前：<span id="currentYear">第5幕</span></span>
+        </div>
+        <p class="hint">拖动滑条仅保留选定幕前后的情节。</p>
+      </div>
+
+      <div class="card">
+        <div class="flex">
+          <div class="chip">任务关系网络</div>
+          <div class="chip">时间线注解</div>
+        </div>
+        <p class="hint">本页面为静态文件，直接双击 <code>index.html</code> 即可离线查看，也可部署到任意静态托管。</p>
+      </div>
+    </aside>
+
+    <section class="canvas">
+      <div class="legend">
+        <span><span class="dot" style="background:#38bdf8"></span>角色</span>
+        <span><span class="dot" style="background:#f472b6"></span>情节事件</span>
+        <span><span class="dot" style="background:#facc15"></span>阵营/组织</span>
+        <span><span class="dot" style="background:#22c55e"></span>物件/线索</span>
+      </div>
+      <svg id="graph" role="img" aria-label="小说任务关系力导图"></svg>
+    </section>
+
+    <aside class="right">
+      <h2>时间线与情节概要</h2>
+      <div id="timeline" class="timeline"></div>
+
+      <h2>当前选中</h2>
+      <div id="detail" class="card">
+        <p class="hint">点击节点查看具体人物或情节信息。</p>
+      </div>
+    </aside>
+  </main>
+
+  <script>
+    const storyData = {
+      author: '叶嘉新',
+      branches: ['主线', '云岫支线', '溟海支线', '夜都支线'],
+      nodes: [
+        { id: 'yun_shu', name: '云舒', type: '角色', branch: '主线', role: '夜行者', summary: '背负破局使命的主角，拥有解读古卷的能力。', stage: 1 },
+        { id: 'luo_chen', name: '洛辰', type: '角色', branch: '主线', role: '影卫', summary: '忠诚的护卫，负责在危机中护送云舒。', stage: 1 },
+        { id: 'qing_feng', name: '清风', type: '角色', branch: '云岫支线', role: '驭风使', summary: '游侠，擅长空中侦查，熟悉云岫城的地形。', stage: 2 },
+        { id: 'hai_ming', name: '海鸣', type: '角色', branch: '溟海支线', role: '潮语者', summary: '能与海兽沟通的少年，守护溟海秘密。', stage: 3 },
+        { id: 'ye_duo', name: '夜朵', type: '角色', branch: '夜都支线', role: '情报师', summary: '夜都情报网的核心，掌握城内势力分布。', stage: 4 },
+        { id: 'master', name: '无名师父', type: '角色', branch: '主线', role: '导师', summary: '教授云舒基础心法的人，身份神秘。', stage: 1 },
+        { id: 'storm_order', name: '风暴令', type: '物件', branch: '云岫支线', role: '令牌', summary: '能召唤云岫守卫的令牌，通向隐藏高塔。', stage: 2 },
+        { id: 'tide_shell', name: '潮生贝', type: '物件', branch: '溟海支线', role: '线索', summary: '记录潮语的贝壳，能打开溟海古迹的大门。', stage: 3 },
+        { id: 'night_code', name: '夜都密钥', type: '物件', branch: '夜都支线', role: '线索', summary: '夜都情报塔的钥匙，能调取暗网记录。', stage: 4 },
+        { id: 'black_moon', name: '黑月社', type: '阵营', branch: '夜都支线', role: '势力', summary: '潜藏在夜都的刺客组织，与主角阵营对立。', stage: 4 },
+        { id: 'crown', name: '霜冠会议', type: '阵营', branch: '主线', role: '盟友', summary: '各支线代表的联盟议会，决定最终行动方向。', stage: 5 },
+
+        // 情节事件
+        { id: 'event_prologue', name: '序章·破局召唤', type: '情节', branch: '主线', role: '剧情', summary: '云舒获知父亲留下的密信，得知九日之内必须集齐三件钥匙。', stage: 1 },
+        { id: 'event_cloud', name: '云岫·风暴令觉醒', type: '情节', branch: '云岫支线', role: '剧情', summary: '云舒与清风在云顶塔破解风暴令，获得第一枚钥匙。', stage: 2 },
+        { id: 'event_sea', name: '溟海·潮声试炼', type: '情节', branch: '溟海支线', role: '剧情', summary: '海鸣引导众人潜入深海遗迹，潮生贝开启古碑。', stage: 3 },
+        { id: 'event_night', name: '夜都·暗网追踪', type: '情节', branch: '夜都支线', role: '剧情', summary: '夜朵借助密钥揪出黑月社的暗桩，险些暴露。', stage: 4 },
+        { id: 'event_crown', name: '终局·霜冠议决', type: '情节', branch: '主线', role: '剧情', summary: '众支线代表齐聚霜冠会议，共同决定终局行动方案。', stage: 5 }
+      ],
+      links: [
+        { source: 'yun_shu', target: 'luo_chen', relation: '护卫', branch: '主线' },
+        { source: 'yun_shu', target: 'master', relation: '导师', branch: '主线' },
+        { source: 'yun_shu', target: 'event_prologue', relation: '触发', branch: '主线' },
+        { source: 'yun_shu', target: 'qing_feng', relation: '结盟', branch: '云岫支线' },
+        { source: 'qing_feng', target: 'storm_order', relation: '守护', branch: '云岫支线' },
+        { source: 'storm_order', target: 'event_cloud', relation: '钥匙', branch: '云岫支线' },
+        { source: 'yun_shu', target: 'hai_ming', relation: '合作', branch: '溟海支线' },
+        { source: 'hai_ming', target: 'tide_shell', relation: '线索', branch: '溟海支线' },
+        { source: 'tide_shell', target: 'event_sea', relation: '启动', branch: '溟海支线' },
+        { source: 'yun_shu', target: 'ye_duo', relation: '情报互换', branch: '夜都支线' },
+        { source: 'ye_duo', target: 'night_code', relation: '持有', branch: '夜都支线' },
+        { source: 'night_code', target: 'event_night', relation: '开启', branch: '夜都支线' },
+        { source: 'ye_duo', target: 'black_moon', relation: '对抗', branch: '夜都支线' },
+        { source: 'black_moon', target: 'event_night', relation: '阻挠', branch: '夜都支线' },
+        { source: 'event_cloud', target: 'event_sea', relation: '线索传递', branch: '主线' },
+        { source: 'event_sea', target: 'event_night', relation: '线索传递', branch: '主线' },
+        { source: 'event_night', target: 'event_crown', relation: '会议筹备', branch: '主线' },
+        { source: 'crown', target: 'event_crown', relation: '决议', branch: '主线' },
+        { source: 'yun_shu', target: 'event_crown', relation: '终局参与', branch: '主线' }
+      ]
+    };
+
+    const colors = {
+      '角色': '#38bdf8',
+      '情节': '#f472b6',
+      '阵营': '#facc15',
+      '物件': '#22c55e'
+    };
+
+    const svg = d3.select('#graph');
+    const width = () => svg.node().clientWidth || 600;
+    const height = () => svg.node().clientHeight || 600;
+
+    const simulation = d3.forceSimulation()
+      .force('link', d3.forceLink().id(d => d.id).distance(120))
+      .force('charge', d3.forceManyBody().strength(-260))
+      .force('center', d3.forceCenter(width() / 2, height() / 2))
+      .force('collision', d3.forceCollide().radius(55));
+
+    let linkSel = svg.append('g').attr('stroke', '#334155').attr('stroke-width', 1.2).selectAll('line');
+    let nodeSel = svg.append('g').attr('stroke', '#0b1224').attr('stroke-width', 1.4).selectAll('g');
+
+    const state = {
+      selectedBranches: new Set(storyData.branches),
+      selectedTypes: new Set(['角色','情节','阵营','物件']),
+      search: '',
+      maxStage: 5,
+      pin: false,
+      showLabels: true,
+      active: null
+    };
+
+    function initFilters() {
+      const branchContainer = document.getElementById('branchFilters');
+      storyData.branches.forEach(branch => {
+        const label = document.createElement('label');
+        label.innerHTML = `<input type="checkbox" checked data-branch="${branch}"> ${branch}`;
+        branchContainer.appendChild(label);
+      });
+
+      document.getElementById('selectAll').onclick = () => {
+        state.selectedBranches = new Set(storyData.branches);
+        branchContainer.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = true);
+        update();
+      };
+
+      branchContainer.addEventListener('change', (e) => {
+        if (e.target.matches('[data-branch]')) {
+          const { branch } = e.target.dataset;
+          e.target.checked ? state.selectedBranches.add(branch) : state.selectedBranches.delete(branch);
+          if (!state.selectedBranches.size) {
+            e.target.checked = true; state.selectedBranches.add(branch);
+          }
+          update();
+        }
+      });
+
+      const typeContainer = document.getElementById('typeFilters');
+      Object.keys(colors).forEach(type => {
+        const label = document.createElement('label');
+        label.innerHTML = `<input type="checkbox" checked data-type="${type}"> ${type}`;
+        typeContainer.appendChild(label);
+      });
+      typeContainer.addEventListener('change', (e) => {
+        if (e.target.matches('[data-type]')) {
+          const { type } = e.target.dataset;
+          e.target.checked ? state.selectedTypes.add(type) : state.selectedTypes.delete(type);
+          if (!state.selectedTypes.size) {
+            e.target.checked = true; state.selectedTypes.add(type);
+          }
+          update();
+        }
+      });
+
+      document.getElementById('yearRange').addEventListener('input', (e) => {
+        state.maxStage = +e.target.value;
+        document.getElementById('currentYear').textContent = `第${state.maxStage}幕`;
+        update();
+      });
+
+      document.getElementById('search').addEventListener('input', (e) => {
+        state.search = e.target.value.trim();
+        update();
+      });
+
+      document.getElementById('resetBtn').onclick = () => {
+        state.selectedBranches = new Set(storyData.branches);
+        state.selectedTypes = new Set(Object.keys(colors));
+        state.search = '';
+        state.maxStage = 5;
+        state.active = null;
+        document.getElementById('search').value = '';
+        document.getElementById('yearRange').value = 5;
+        document.getElementById('currentYear').textContent = '第5幕';
+        document.querySelectorAll('#branchFilters input').forEach(cb => cb.checked = true);
+        document.querySelectorAll('#typeFilters input').forEach(cb => cb.checked = true);
+        update();
+      };
+
+      document.getElementById('pinToggle').addEventListener('change', (e) => {
+        state.pin = e.target.checked;
+      });
+
+      document.getElementById('labelsToggle').addEventListener('change', (e) => {
+        state.showLabels = e.target.checked;
+        svg.selectAll('text.node-label').attr('display', state.showLabels ? null : 'none');
+      });
+    }
+
+    function filterData() {
+      const keyword = state.search.toLowerCase();
+      const nodes = storyData.nodes.filter(n =>
+        state.selectedBranches.has(n.branch) &&
+        state.selectedTypes.has(n.type) &&
+        n.stage <= state.maxStage &&
+        (!keyword || n.name.toLowerCase().includes(keyword) || n.summary.toLowerCase().includes(keyword))
+      );
+
+      const allowed = new Set(nodes.map(n => n.id));
+      const links = storyData.links.filter(l => allowed.has(l.source) && allowed.has(l.target));
+      return { nodes, links };
+    }
+
+    function update() {
+      const { nodes, links } = filterData();
+      simulation.nodes(nodes);
+      simulation.force('link').links(links);
+
+      linkSel = linkSel.data(links, d => `${d.source.id || d.source}-${d.target.id || d.target}-${d.relation}`);
+      linkSel.exit().remove();
+      const linkEnter = linkSel.enter().append('line')
+        .attr('stroke-width', 1.8)
+        .attr('stroke', d => state.selectedBranches.size === 1 ? '#a5b4fc' : '#334155')
+        .attr('opacity', 0.7);
+      linkSel = linkEnter.merge(linkSel);
+
+      nodeSel = nodeSel.data(nodes, d => d.id);
+      nodeSel.exit().remove();
+      const nodeEnter = nodeSel.enter().append('g')
+        .call(d3.drag()
+          .on('start', dragStarted)
+          .on('drag', dragged)
+          .on('end', dragEnded))
+        .on('click', (e, d) => {
+          state.active = d;
+          renderDetail(d);
+          if (!state.pin) highlightFocus(d.id);
+        });
+
+      nodeEnter.append('circle')
+        .attr('r', d => ({ '情节': 18, '角色': 14, '阵营': 16, '物件': 12 }[d.type] || 12))
+        .attr('fill', d => colors[d.type] || '#94a3b8')
+        .attr('opacity', 0.9);
+
+      nodeEnter.append('text')
+        .attr('class', 'node-label')
+        .attr('x', 0)
+        .attr('y', 34)
+        .attr('text-anchor', 'middle')
+        .attr('fill', '#cbd5e1')
+        .attr('font-size', 12)
+        .text(d => d.name);
+
+      nodeSel = nodeEnter.merge(nodeSel);
+      svg.selectAll('text.node-label').attr('display', state.showLabels ? null : 'none');
+
+      simulation.alpha(1).restart();
+      renderTimeline(nodes);
+      if (state.active) renderDetail(state.active);
+    }
+
+    function dragStarted(event, d) {
+      if (!event.active) simulation.alphaTarget(0.2).restart();
+      d.fx = d.x; d.fy = d.y;
+    }
+
+    function dragged(event, d) {
+      d.fx = event.x; d.fy = event.y;
+    }
+
+    function dragEnded(event, d) {
+      if (!event.active) simulation.alphaTarget(0);
+      if (!state.pin) { d.fx = null; d.fy = null; }
+    }
+
+    simulation.on('tick', () => {
+      const w = width();
+      const h = height();
+      nodeSel.attr('transform', d => `translate(${d.x = Math.max(20, Math.min(w - 20, d.x))},${d.y = Math.max(20, Math.min(h - 20, d.y))})`);
+      linkSel
+        .attr('x1', d => d.source.x)
+        .attr('y1', d => d.source.y)
+        .attr('x2', d => d.target.x)
+        .attr('y2', d => d.target.y);
+    });
+
+    function renderTimeline(nodes) {
+      const container = document.getElementById('timeline');
+      container.innerHTML = '';
+      nodes
+        .filter(n => n.type === '情节')
+        .sort((a, b) => a.stage - b.stage)
+        .forEach(event => {
+          const div = document.createElement('div');
+          div.className = 'timeline-item';
+          div.innerHTML = `
+            <h4>第${event.stage}幕 · ${event.name}</h4>
+            <p>${event.summary}</p>
+            <div class="hint">支线：${event.branch}｜类型：${event.role}</div>
+          `;
+          div.onclick = () => highlightFocus(event.id);
+          container.appendChild(div);
+        });
+    }
+
+    function renderDetail(d) {
+      const box = document.getElementById('detail');
+      box.innerHTML = `
+        <h3 style="margin:0 0 8px; color:#e0f2fe;">${d.name}</h3>
+        <p class="hint" style="margin:0 0 10px;">类型：${d.type}｜支线：${d.branch}｜幕：第${d.stage}幕</p>
+        <p style="line-height:1.5; color:#e5e7eb;">${d.summary || '暂无简介'}</p>
+        <div class="flex" style="margin-top:10px;">
+          <div class="badge">身份：${d.role || '未知'}</div>
+          <div class="badge">编号：${d.id}</div>
+        </div>
+      `;
+    }
+
+    function highlightFocus(id) {
+      const focusSet = new Set([id]);
+      storyData.links.forEach(l => {
+        if (l.source.id === id || l.source === id) focusSet.add(l.target.id || l.target);
+        if (l.target.id === id || l.target === id) focusSet.add(l.source.id || l.source);
+      });
+      svg.selectAll('g').attr('opacity', d => focusSet.has(d.id) ? 1 : 0.25);
+      svg.selectAll('line').attr('opacity', l => focusSet.has(l.source.id || l.source) && focusSet.has(l.target.id || l.target) ? 0.9 : 0.05);
+      setTimeout(() => {
+        if (!state.pin) {
+          svg.selectAll('g').attr('opacity', 1);
+          svg.selectAll('line').attr('opacity', 0.7);
+        }
+      }, 1600);
+    }
+
+    function resize() {
+      svg.attr('width', width()).attr('height', height());
+      simulation.force('center', d3.forceCenter(width() / 2, height() / 2));
+      simulation.alpha(0.3).restart();
+    }
+
+    window.addEventListener('resize', resize);
+
+    resize();
+    initFilters();
+    update();
+  </script>
+</body>
+</html>
